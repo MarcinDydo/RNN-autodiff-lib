@@ -4,13 +4,14 @@ using Statistics
 using ProgressMeter, BenchmarkTools
 using LinearAlgebra
 include("../src/graphutils.jl")
+include("../src/autodifflib.jl")
 
 # Ładowanie danych MNIST
 train_data = MNIST(:train)
 test_data  = MNIST(:test)
 
 # Funkcja do ładowania danych
-function trainRNN(learning_rate::Int, epochs::Int)
+function initRNN(learning_rate::Int, epochs::Int) #returns layers
     num_of_classes = 10; #0-9 cyfry
     input_size = length(vec(train_data[1].features)) #feature_dim
     hidden_size = 100 #liczba neuronów ukrytych
@@ -26,24 +27,22 @@ function trainRNN(learning_rate::Int, epochs::Int)
     input_layer = InputLayer(Wxh,Node())
     recusive_layer = RNNLayer(Node(), Whh,bh,hiddens)
     output_layer = OutputLayer(Node(),outputs,Why,b)
-    forward_pass(input_layer, recusive_layer, output_layer)
+    return input_layer, recusive_layer, output_layer
+end
+
+function trainRNN(learning_rate::Int, epochs::Int)
+    model = Model(initRNN(1,1)...)
+    forward_pass(model, train_data.features)
+    println(model.out.outputs)
     
 end
 
-
-function forward_pass(in::InputLayer, hid::RNNLayer, out::OutputLayer)
-    
-    for i in 1:5
-        input_value = transpose(vec(train_data[i].features))
-        println("(input)multiplying",typeof(input_value),size(input_value),"with",typeof(in.Wxh),size(in.Wxh))
-        tmp = input_value * in.Wxh
-        println("result",typeof(tmp),size(tmp))
-        in.node.state = tmp
-        forward_step(in,hid,out)
-    end
+function backward_pass()
+    targets = train_data.targets[1:test_size]
+    actuals = one_hot.(targets)
+    loss_grad = outputs - actuals #mse gradient - mse = mean((actuals - outputs)**2)
     println(out.outputs)
 end
-
 
 trainRNN(1,1)
 trainRNN(1,1)

@@ -56,43 +56,45 @@ function forward_step(input::InputLayer, hidden::RNNLayer, output::OutputLayer,c
     
     #hidden.node.state = relu(input.node.state + hidden.node.state) #TODO: relu change to hidden.activation  
     hidden.node.state = hidden.activation(input.node.state + hidden.node.state,c) 
-    if any(isnan.(hidden.node.state))*
-        println("there is NaN in hidden node: ")
-        return -1
-    end  
+    #if any(isnan.(hidden.node.state))*
+    #    println("there is NaN in hidden node: ")
+    #    return -1
+    #end  
     push!(hidden.hiddens, hidden.node.state)
     #println( " (after relu)multiplying " ,typeof(hidden.node.state),size(hidden.node.state), " with " ,typeof(output.Why),size(output.Why))
     output.node.state = (hidden.node.state * output.Why)  + output.b 
     output.node.state = output.activation(output.node.state) #softmax
-    if any(isnan.(output.node.state))
-        println("there is NaN in out node: ")
-        println(output.node.state)
-        println(output.Why)
-        println(hidden.node.state)
-        println((hidden.node.state * output.Why)  + output.b )
-        println(norm(hidden.node.state))
-        return -1
-    end  
+    #if any(isnan.(output.node.state))
+    #    println("there is NaN in out node: ")
+    #    println(output.node.state)
+    #    println(output.Why)
+     #   println(hidden.node.state)
+     #   println((hidden.node.state * output.Why)  + output.b )
+     #   println(norm(hidden.node.state))
+     #   return -1
+    #end  
     #println( " klasa " ,argmax(output.node.state)[2], " pewność ", output.node.state[argmax(output.node.state)[2]])
     push!(output.outputs, vec(output.node.state)) #predykcja
-    return 1
+    #return 1
 end
 
-function forward_pass(model::Model, features::Array{Float32,3}, batchsize::Int32)
+function forward_pass(model::Model, features::Array{Float32,3}, batchsize::Int)
     #s_size = size(features)[3]
     for i in 1:batchsize #full forward pass TODO: change to 1:size of features
         input_value = transpose(vec(features[:,:,i]))
         push!(model.in.inputs, input_value) #later used for backpropagation
         #println("(input)multiplying",typeof(input_value),size(input_value),"with",typeof(model.in.Wxh),size(model.in.Wxh))
         model.in.node.state = input_value * model.in.Wxh
-        if forward_step(model.in,model.hid,model.out,model.c) < 0
-            println("iter of fail NaN = ",i)
-            break
-        end
+        forward_step(model.in,model.hid,model.out,model.c) 
+        debug(model.hid.node.state)
+        #if forward_step(model.in,model.hid,model.out,model.c) < 0
+        #    println("iter of fail NaN = ",i)
+        #    break
+        #end
     end
 end
 
-function backward_pass(model::Model, targets::Vector{Int64}, batchsize::Int32)
+function backward_pass(model::Model, targets::Vector{Int64}, batchsize::Int)
     #init
     #s_size = length(targets)
     actuals = one_hot.(targets)
@@ -134,9 +136,9 @@ function backward_pass(model::Model, targets::Vector{Int64}, batchsize::Int32)
         debuguj(i,model.in.Wxh_grad)
 
         # Clip gradients to avoid exploding gradients
-        #for g in [model.out.Why_grad, model.hid.Whh_grad, model.in.Wxh_grad]
-            #g .= clamp.(g, -5, 5)
-        #end
+        for g in [model.out.Why_grad, model.hid.Whh_grad, model.in.Wxh_grad]
+            g .= clamp.(g, -5, 5)
+        end
         #TODO: biasy
     end
 
@@ -162,12 +164,12 @@ end
 
 function debuguj(i, mat)
     a=0
-    if i % 500 == 0
-        #println(i, "th norma Whx_grad " ,norm(mat), "max", maximum(mat))
+    if i % 50 == 0
+        println(i, "th norma Whx_grad " ,norm(mat), "max", maximum(mat))
         a =1
     end
 end
 
 function debug(mat)
-    println("typeof mat:", typeof(mat), size(mat), mat)
+    println("typeof mat:", typeof(mat), size(mat), maximum(mat))
 end

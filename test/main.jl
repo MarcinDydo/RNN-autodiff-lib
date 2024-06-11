@@ -50,15 +50,13 @@ function trainRNN(learning_rate::Float64, epochs::Int) #TODO: zrobic to porzadni
     model = Model(initRNN(1,1)...,learning_rate,clamp)
     for i in 1:epochs
         #println("Maximum and pos in Whh: ",argmax(model.hid.Whh), model.hid.Whh[argmax(model.hid.Whh)])
-        for j in 1:(length(train_data.targets) \ batchsize)
-            batch_indices = randperm(length(train_data.features))[1:batchsize]
-            debug(batch_indices)
-            # Select the batch data
-            batch_x =  train_data.features[batch_indices]
-            batch_y =  train_data.targets[batch_indices]
+        for j in 1:60
+            batch_x =  shuffle(train_data.features)[:,:,1:batchsize]
+            #debug(batch_x)
+            batch_y =  shuffle(train_data.targets)[1:batchsize]
             #println("Maximum and pos in Wxh: ",argmax(model.in.Wxh), model.in.Wxh[argmax(model.in.Wxh)])
             #println("iniitial outputs: ",model.out.outputs)
-            forward_pass(model, batch_x, batchsize) #train_data.features powinno byc losowym batchem
+            forward_pass(model, batch_x, batchsize) #train_data.features powinn-o byc losowym batchem
             #actuals = one_hot.(train_data.targets)
             #grad = mse_grad(actuals,model.out.outputs)
             #println("fp", i, " Maximum and pos in hidden : ",argmax(model.hid.hiddens[10]), model.hid.hiddens[10][argmax(model.hid.hiddens[10])])
@@ -71,6 +69,9 @@ function trainRNN(learning_rate::Float64, epochs::Int) #TODO: zrobic to porzadni
             empty!(model.hid.hiddens)
             empty!(model.out.outputs)
             empty!(model.in.inputs)
+            model.hid.Whh_grad = zeros(size(model.hid.Whh_grad))
+            model.out.Why_grad = zeros(size( model.out.Why_grad))
+            model.in.Wxh_grad = zeros(size(model.in.Wxh_grad))
         end
     end
 end
@@ -81,8 +82,8 @@ function calculate_accuracy(predictions, targets)
     #actuals = one_hot.(targets)
     #loss = mse.(actuals,model.out.outputs)
     #println(predictions,targets)
-    debug(predictions)
-    debug(targets)
+    #debug(predictions)
+    #debug(targets)
     for i in 1:n_samples
         if argmax(predictions[i])[1]-1 == targets[i] #because of 0 
             #println("correct prediction! pred:",argmax(predictions[i]),"y:",predictions[i],"actual:",targets[i])

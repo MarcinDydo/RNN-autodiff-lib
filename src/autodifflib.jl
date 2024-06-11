@@ -40,13 +40,13 @@ function cgrad()
 end
 
 function relu(matrix::AbstractMatrix{T}, c::Float32) where T<:Real
-    m = clamp.(matrix, -c, c)
-    return max.(m, 0.0)
+    #m = clamp.(matrix, -c, c)
+    return max.(matrix, 0.0)
 end
 
 function relu_derivative(matrix::AbstractMatrix{T}, c::Float32) where T<:Real
-    m = clamp.(matrix, -c, c)
-    map(x -> x > 0 ? 1 : 0, m)
+    #m = clamp.(matrix, -c, c)
+    map(x -> x > 0 ? 1 : 0, matrix)
 end
 
 function tanhip(matrix::AbstractMatrix{T}, c::Float32) where T<:Real

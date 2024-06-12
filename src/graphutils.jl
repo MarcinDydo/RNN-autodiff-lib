@@ -97,10 +97,10 @@ function backward_pass(model::Model, targets::Vector{Int64}, batchsize::Int)
         end#końcowy case
         backward(model.in,hidden_grad,model.in.inputs[i])
     end
-    for j in [model.in.weights_grad, model.hid.weights_grad, model.out.weights_grad]
-        println("gradient")
-        debug(j)
-    end
+    #for j in [model.in.weights_grad, model.hid.weights_grad, model.out.weights_grad]
+    #    println("gradient")
+    #    debug(j)
+    #end
     #update wag
     model.in.weights -= model.in.weights_grad * lr
     replace!(model.in.weights , NaN=>0.0)
@@ -116,10 +116,10 @@ function backward_pass(model::Model, targets::Vector{Int64}, batchsize::Int)
     model.in.bias -= model.in.bias_grad * lr
     replace!(model.out.bias , NaN=>0.0)
 
-    for j in [model.in.weights, model.hid.weights, model.out.weights]
-        println("wagi")
-        debug(j)
-    end
+    #for j in [model.in.weights, model.hid.weights, model.out.weights]
+    #    println("wagi")
+    #    debug(j)
+    #end
 end
 
 function backward(layer::OutputLayer, dL_dy::Vector{Float32}, hid_state::Vector{Float32}) # gradient of the loss with respect to the predictions 

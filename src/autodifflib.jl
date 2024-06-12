@@ -17,45 +17,38 @@ end
 
 # Funkcja obliczająca gradient MSE
 function mse_grad(y_true, y_pred)
-    #return 2*(y_pred - y_true) / prod(size(y_pred)[1:end-1])
+    return 2*(y_pred - y_true) / prod(size(y_pred)[1:end-1])
+end
+
+function cross_entropy_loss(y_pred, y_true)
+    # Ensure numerical stability and prevent log(0)
+    epsilon = 1e-12
+    y_pred = clamp.(y_pred, epsilon, 1 - epsilon)
+    return -sum(y_true .* log.(y_pred))
+end
+
+function cross_grad(y_true, y_pred) #cross entropy loss with softmax
     return (y_pred - y_true) 
 end
 
-function compute_grad(y_true, y_pred) #cross entropy loss?
-    grad = []
-    for i in 1:length(y_pred)
-        g = zeros(length(y_pred[i]))
-        y = y_true[i]
-        y_hat = y_pred[i]
-        if y_hat[argmax(y)] != 0
-            g[argmax(y)] = -1 / y_hat[argmax(y)]
-        end
-        push!(grad,g) 
-    end
-    return grad
+function relu(matrix::AbstractVector{T}, c = 5.0) where T<:Real
+    m = matrix # clamp.(matrix, -c, c)
+    return max.(m, 0.0)
 end
 
-function cgrad()
-    
+function relu_derivative(matrix::AbstractVector{T}, c = 5.0) where T<:Real
+    m = matrix # clamp.(matrix, -c, c)
+    map(x -> x > 0 ? 1 : 0, m)
 end
 
-function relu(matrix::AbstractMatrix{T}, c::Float32) where T<:Real
-    #m = clamp.(matrix, -c, c)
-    return max.(matrix, 0.0)
-end
-
-function relu_derivative(matrix::AbstractMatrix{T}, c::Float32) where T<:Real
-    #m = clamp.(matrix, -c, c)
-    map(x -> x > 0 ? 1 : 0, matrix)
-end
-
-function tanhip(matrix::AbstractMatrix{T}, c::Float32) where T<:Real
-    m = clamp.(matrix, -c, c)
+function tanhip(matrix::AbstractVector{T}, c=5.0) where T<:Real
+    m = matrix # clamp.(matrix, -c, c)
     return tanh.(m)
 end
 
-function tanhip_derivative(matrix::AbstractMatrix{T}) where T<:Real
-    map(x -> 1 - tanh(x)^2, matrix)
+function tanhip_derivative(matrix::AbstractVector{T}, c=5.0) where T<:Real
+    m = matrix # clamp.(matrix, -c, c)
+    return Vector{Float32}(map(x -> 1 - tanh(x)^2, m))
 end
 
 function softmax(matrix::AbstractMatrix{T}) where T<:Real
@@ -73,3 +66,14 @@ function softmax_derivative(matrix::AbstractVector{T}) where T<:Real #actually j
 
 end
 
+function debuguj(i, mat, str)
+    a=0
+    if i % 20 == 0
+        #println(i,str, "th norma W grad " ,norm(mat), "max", maximum(mat))
+        a =1
+    end
+end
+
+function debug(mat)
+    println("typeof mat:", display(mat))
+end

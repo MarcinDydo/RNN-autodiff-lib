@@ -53,7 +53,7 @@ function forward(layer::InputLayer, input::Vector{Float32})
 end
 
 function forward(layer::HiddenLayer, input::Vector{Float32}, prev_state::Union{Vector{Float32},Nothing}) #input is a vector from previous layer
-    if isnothing(prev_state) # decide if it should be nothing or zeros
+    if isnothing(prev_state) 
         z = input
     else
         z = vec(input + layer.weights * prev_state + layer.bias)
@@ -81,10 +81,9 @@ end
 
 #Backpropagarion
 
-function backward_pass(model::Model, targets::Vector{Int64}, batchsize::Int)
+function backward_pass(model::Model, actuals::Vector{Vector{Int}} , batchsize::Int)
     lr = model.learning_rate #/ batchsize
-    actuals = one_hot.(targets)
-    loss_grad = cross_grad(actuals,model.out.outputs) #now we have all output gradients relative to actual classes TODO
+    loss_grad = model.loss_gradient(actuals,model.out.outputs) #now we have all output gradients relative to actual classes
     next = nothing
 
     for i in reverse(1:batchsize)
@@ -97,10 +96,6 @@ function backward_pass(model::Model, targets::Vector{Int64}, batchsize::Int)
         end#końcowy case
         backward(model.in,hidden_grad,model.in.inputs[i])
     end
-    #for j in [model.in.weights_grad, model.hid.weights_grad, model.out.weights_grad]
-    #    println("gradient")
-    #    debug(j)
-    #end
     #update wag
     model.in.weights -= model.in.weights_grad * lr
     replace!(model.in.weights , NaN=>0.0)
@@ -116,10 +111,6 @@ function backward_pass(model::Model, targets::Vector{Int64}, batchsize::Int)
     model.in.bias -= model.in.bias_grad * lr
     replace!(model.out.bias , NaN=>0.0)
 
-    #for j in [model.in.weights, model.hid.weights, model.out.weights]
-    #    println("wagi")
-    #    debug(j)
-    #end
 end
 
 function backward(layer::OutputLayer, dL_dy::Vector{Float32}, hid_state::Vector{Float32}) # gradient of the loss with respect to the predictions 

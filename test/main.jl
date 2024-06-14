@@ -50,22 +50,17 @@ end
 
 function trainRNN(learning_rate::Float64, epochs::Int) 
     clamp = 5.0
-    epoch_loss = 0
     batchsize = 1000
-    model = Model(initRNN(1,1)...,learning_rate,x->x,mse_grad,clamp) #TODO implement loss
+
+    model = Model(initRNN(1,1)...,learning_rate,x->x,cross_grad,clamp) #TODO implement loss
     for i in 1:epochs
         indices = shuffle(collect(1:batchsize))
-        batch_x =  myshuffle(indices,batchsize,train_data.features) #shuffle??
-        #debug(batch_x)
+        batch_x =  myshuffle(indices,batchsize,train_data.features) 
         batch_y =  [train_data.targets[j] for j in indices]
-        println(i," epoch")
+        
         forward_pass(model, batch_x, batchsize) 
-        #println("fp", i, " Maximum and pos in output : ",argmax(model.out.outputs[10]), model.out.outputs[10][argmax(model.out.outputs[10])],model.out.outputs[10])
-        println(i, " Accuracy: ", calculate_accuracy(model.out.outputs,batch_y))
-        #println(i," Loss: ", mean(cross_entropy_loss.(batch_y,model.out.outputs)))
-        println(i," bp")
-        backward_pass(model, batch_y, batchsize)
-        #println("bp", i, " Maximum and pos in Whh : ",argmax(model.hid.Whh), model.hid.Whh[argmax(model.hid.Whh)])
+        println(i, "th epoch, Accuracy: ", calculate_accuracy(model.out.outputs,batch_y))
+        backward_pass(model, one_hot.(batch_y), batchsize)
         resetRNN(model)
     end
     return model
@@ -89,27 +84,18 @@ function myshuffle(indices,batchsize, mat)
     width = 28
     res = Array{Float32}(undef, height, width, batchsize)
     n =1
-    #debug(indices)
     for i in indices
-        #debug(train_data.features[:,:,i])
         res[:, :, n] = mat[:,:,i]
         n +=1
     end
-    #debug(res)
     return res
 end
 
 function calculate_accuracy(predictions, targets)
     n_samples = length(targets)
     n_correct = 0
-    #actuals = one_hot.(targets)
-    #loss = mse.(actuals,model.out.outputs)
-    #println(predictions,targets)
-    #debug(predictions)
-    #debug(targets)
     for i in 1:n_samples
         if argmax(predictions[i])[1]-1 == targets[i] #because of 0 
-            #println("correct prediction! pred:",argmax(predictions[i]),"y:",predictions[i],"actual:",targets[i])
             n_correct+=1
         end
     end
@@ -119,22 +105,19 @@ end
 function testRNN(model::Model)
 
     batchsize = length(test_data)
-    println(length(test_data))
     resetRNN(model)
     indices = shuffle(collect(1:batchsize))
-    println("random test sample:", display(indices))
-    test_x =  myshuffle(indices,batchsize,test_data.features) #shuffle??
-    #debug(batch_x)
+    test_x =  myshuffle(indices,batchsize,test_data.features)
     test_y =  [test_data.targets[j] for j in indices]
     forward_pass(model, test_x, batchsize) 
 
-    println( " Accuracy: ", calculate_accuracy(model.out.outputs,test_y))
-    println(" Loss: ", mean(cross_entropy_loss.(test_y,model.out.outputs)))
-    println(" bp")
-
+    println( "Test Accuracy: ", calculate_accuracy(model.out.outputs,test_y))
 end
 
-m = trainRNN(learning_rate,epochs)
-for a in 1:100
+@time begin
+    m = trainRNN(learning_rate,epochs)
+end
+
+for a in 1:10
     testRNN(m)
 end

@@ -1,103 +1,144 @@
 using LinearAlgebra
 abstract type Layer end
 
-mutable struct Node 
-    state::Union{Matrix{Float32}, Nothing}
-    Node() =  new()
+mutable struct InputLayer <: Layer 
+    activation::Function #
+    derivative::Function
+    state::Union{Vector{Float32}, Nothing} #state of nodes as a vector #
+    weights::Matrix{Float32} #w * input = output #
+    weights_grad::Matrix{Float32} #used in backpropagarion
+    bias::Matrix{Float32} 
+    bias_grad::Matrix{Float32}                          
+    inputs::Vector{Vector{Float32}} #
 end
 
-#LAYERS
-mutable struct InputLayer <:Layer                         
-    Wxh::Matrix{Float32} #macierz wag (dla danego punktu czasowego) przekształcająca wejście na stan ukryty.(input weights)
-    node::Node #może być jeden lub więcej node-ów początkowych (value in given timestep)
-    inputs::Vector{Matrix{Float32}}
-    Wxh_grad::Matrix{Float32}
+mutable struct HiddenLayer <: Layer 
+    activation::Function #
+    derivative::Function
+    state::Union{Vector{Float32}, Nothing} #state of nodes as a vector #
+    weights::Matrix{Float32} #w * input = output #
+    weights_grad::Matrix{Float32} #used in backpropagarion
+    bias::Matrix{Float32} 
+    bias_grad::Matrix{Float32}
+    hiddens::Vector{Vector{Float32}} 
 end
 
-mutable struct RNNLayer <:Layer #tutaj przechowuje gradienty i wagi
-    node::Node
-    Whh::Matrix{Float32} #macierz wag przekształcająca poprzedni stan ukryty (Hidden weights)
-    bh::Matrix{Float32} #Wektor biasów dodawanych do stanu ukrytego.
-    hiddens::Vector{Matrix{Float32}} #pamięć ukryta 
-    Whh_grad::Matrix{Float32} 
-    bh_grad::Matrix{Float32}
-    #activation::Function            # Funkcja aktywacji na razie jest relu
-end
-
-mutable struct OutputLayer <:Layer
-    node::Node
+mutable struct OutputLayer <: Layer
+    activation::Function #
+    derivative::Function
+    state::Union{Vector{Float32}, Nothing} #state of nodes as a vector #
+    weights::Matrix{Float32} #w * input = output #
+    weights_grad::Matrix{Float32} #used in backpropagarion
+    bias::Matrix{Float32} 
+    bias_grad::Matrix{Float32}
     outputs::Vector{Vector{Float32}}
-    Why::Matrix{Float32} #Wagi wyjściowe
-    b::Matrix{Float32} #bias 
-    Why_grad::Matrix{Float32} 
-    b_grad::Matrix{Float32} 
-    #activation::Function       #funkcja aktywacji narazie jest softmax
 end
 
-mutable struct Model
+struct Model
     in::InputLayer
-    hid::RNNLayer
+    hid::HiddenLayer
     out::OutputLayer
     learning_rate::Float32
+    loss_function::Function
+    loss_gradient::Function
+    c::Float32
 end
 
-#FUNCTIONS
-function forward_step(input::InputLayer, hidden::RNNLayer, output::OutputLayer)
-    if isempty(hidden.hiddens)
-        hidden.node.state = input.node.state
+#Forward  
+function forward(layer::InputLayer, input::Vector{Float32})
+    push!(layer.inputs, input)
+    z = (layer.weights * input) + layer.bias
+    layer.state = vec(layer.activation(z))
+    return layer.state
+end
+
+function forward(layer::HiddenLayer, input::Vector{Float32}, prev_state::Union{Vector{Float32},Nothing}) #input is a vector from previous layer
+    if isnothing(prev_state) 
+        z = input
     else
-        #println( " (hidden)multiplying " ,typeof(hidden.node.state),size(hidden.node.state), " with " ,typeof(hidden.Whh),size(hidden.Whh))
-        hidden.node.state = (input.node.state + hidden.node.state) * hidden.Whh + hidden.bh
-        #println("hidden", typeof(hidden.node.state), size(hidden.node.state))
+        z = vec(input + layer.weights * prev_state + layer.bias)
+    end
+    layer.state = vec(layer.activation(z))
+    push!(layer.hiddens, layer.state)
+    return layer.state
+end
+
+function forward(layer::OutputLayer, input::Vector{Float32})
+    z = layer.weights * input + layer.bias
+    layer.state = vec(layer.activation(z))
+    push!(layer.outputs, layer.state)
+    return layer.state
+end
+
+function forward_pass(model::Model, features::Array{Float32,3}, batchsize::Int)
+    for i in 1:batchsize
+        input_value = vec(features[:,:,i])
+        forward(model.in , input_value) 
+        forward(model.hid , model.in.state, model.hid.state)
+        forward(model.out , model.hid.state)
+    end
+end
+
+#Backpropagarion
+
+function backward_pass(model::Model, actuals::Vector{Vector{Int}} , batchsize::Int)
+    lr = model.learning_rate
+    loss_grad = model.loss_gradient(actuals,model.out.outputs) #now we have all output gradients relative to actual classes
+    
+    next = nothing
+
+    for i in reverse(1:batchsize)
+        l_grad = loss_grad[i]
+        output_grad = backward(model.out,l_grad,model.hid.hiddens[i])
+        if i > 1
+            hidden_grad = backward(model.hid,output_grad,next,model.hid.hiddens[i],model.hid.hiddens[i-1])
+        else
+            hidden_grad = backward(model.hid,output_grad,next,model.hid.hiddens[i],zeros(Float32,size(model.hid.hiddens[i])))
+        end#końcowy case
+        backward(model.in,hidden_grad,model.in.inputs[i])
+    end
+    #update wag
+    model.in.weights -= model.in.weights_grad * lr
+    replace!(model.in.weights , NaN=>0.0)
+    model.hid.weights -= model.hid.weights_grad * lr
+    replace!(model.hid.weights , NaN=>0.0)
+    model.out.weights -= model.out.weights_grad * lr
+    replace!(model.out.weights , NaN=>0.0)
+
+    model.hid.bias -= model.hid.bias_grad * lr
+    replace!(model.hid.bias , NaN=>0.0)
+    model.out.bias -= model.out.bias_grad * lr
+    replace!(model.out.bias , NaN=>0.0)
+    model.in.bias -= model.in.bias_grad * lr
+    replace!(model.out.bias , NaN=>0.0)
+
+end
+
+function backward(layer::OutputLayer, dL_dy::Vector{Float32}, hid_state::Vector{Float32}) # gradient of the loss with respect to the predictions 
+    # Calculate gradients for output layer
+    layer.weights_grad += dL_dy * hid_state'
+    layer.bias_grad .+= mean(dL_dy)
+    # Gradient to propagate to the hidden layer
+    return transpose(layer.weights) * dL_dy
+end
+
+function backward(layer::HiddenLayer, prev_grad::Vector{Float32}, next_grad::Union{Vector{Float32},Nothing}, hid_state::Vector{Float32}, next_state::Vector{Float32})
+    if isnothing(next_grad)
+        grad = prev_grad
+    else
+        grad = prev_grad + layer.weights' * next_grad
     end
     
-    hidden.node.state = max.(input.node.state + hidden.node.state, 0.0) #TODO: relu change to hidden.activation    
-    push!(hidden.hiddens, hidden.node.state)
-    #println( " (after relu)multiplying " ,typeof(hidden.node.state),size(hidden.node.state), " with " ,typeof(output.Why),size(output.Why))
-    output.node.state = (hidden.node.state * output.Why)  + output.b 
-    output.node.state = exp.(output.node.state) ./ sum(exp.(output.node.state)) #softmax
-    #println( " klasa " ,argmax(output.node.state)[2], " pewność ", output.node.state[argmax(output.node.state)[2]])
-    push!(output.outputs, vec(output.node.state)) #predykcja
+    grad = grad .* layer.derivative(hid_state)
+    # Calculate gradients for hidden layer
+    layer.weights_grad += grad * next_state'
+    layer.bias_grad .+= mean(grad)
+    # Gradient to propagate to the output layer
+    return grad
 end
 
-function forward_pass(model::Model, features::Array{Float32,3})
-    for i in 1:5  #full forward pass TODO: change to 1:size of features
-        input_value = transpose(vec(features[:,:,i]))
-        push!(model.in.inputs, input_value) #later used for backpropagation
-        #println("(input)multiplying",typeof(input_value),size(input_value),"with",typeof(model.in.Wxh),size(model.in.Wxh))
-        model.in.node.state = input_value * model.in.Wxh
-        forward_step(model.in,model.hid,model.out)
-    end
-end
-
-function backward_pass(model::Model, targets::Vector{Int64})
-    #o_s = size(model.out.outputs)[1] #TODO: check if works
-    actuals = one_hot.(targets[1:5])
-    loss_grad = mse_grad(actuals,model.out.outputs)
-    next_hidden = nothing
-    for i in reverse(1:5)
-        l_grad = transpose(loss_grad[i]) #softmax backwards is just pass
-        model.out.Why_grad += transpose(model.hid.hiddens[i]) * l_grad
-        model.out.b_grad .+= mean(l_grad) 
-        o_grad = l_grad * transpose(model.out.Why)
-        if isnothing(next_hidden)
-            h_grad = o_grad 
-        else
-            h_grad = o_grad + next_hidden * transpose(model.hid.Whh)
-        end
-        h_grad = h_grad .* relu_derivative(model.hid.hiddens[i]) #derivative of relu
-        next_hidden = h_grad
-        if i > 1
-            model.hid.Whh_grad += transpose(model.hid.hiddens[i-1]) * h_grad 
-            model.hid.bh_grad .+= mean(h_grad)
-        end
-        
-        model.in.Wxh_grad += transpose(model.in.inputs[i]) * h_grad
-
-    end
-    model.in.Wxh -= model.in.Wxh_grad * model.learning_rate
-    model.hid.Whh -= model.hid.Whh_grad * model.learning_rate
-    model.out.Why -= model.out.Why_grad * model.learning_rate
-    model.hid.bh -= model.hid.bh_grad * model.learning_rate
-    model.out.b -= model.out.b_grad * model.learning_rate
+function backward(layer::InputLayer, grad::Vector{Float32}, in_state::Vector{Float32})
+    layer.weights_grad += grad * in_state'
+    layer.bias_grad .+= mean(grad)
+    return
 end

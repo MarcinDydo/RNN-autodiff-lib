@@ -82,8 +82,9 @@ end
 #Backpropagarion
 
 function backward_pass(model::Model, actuals::Vector{Vector{Int}} , batchsize::Int)
-    lr = model.learning_rate #/ batchsize
+    lr = model.learning_rate
     loss_grad = model.loss_gradient(actuals,model.out.outputs) #now we have all output gradients relative to actual classes
+    
     next = nothing
 
     for i in reverse(1:batchsize)

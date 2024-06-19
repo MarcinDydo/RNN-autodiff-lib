@@ -66,14 +66,30 @@ function softmax_derivative(matrix::AbstractVector{T}) where T<:Real #actually j
 
 end
 
-function debuguj(i, mat, str)
-    a=0
-    if i % 20 == 0
-        #println(i,str, "th norma W grad " ,norm(mat), "max", maximum(mat))
-        a =1
-    end
-end
-
 function debug(mat)
     println("typeof mat:", display(mat))
+end
+
+
+function myshuffle(indices,batchsize, mat)
+    height = 28
+    width = 28
+    res = Array{Float32}(undef, height, width, batchsize)
+    n =1
+    for i in indices
+        res[:, :, n] = mat[:,:,i]
+        n +=1
+    end
+    return res
+end
+
+function calculate_accuracy(predictions, targets)
+    n_samples = length(targets)
+    n_correct = 0
+    for i in 1:n_samples
+        if argmax(predictions[i])[1]-1 == targets[i] #because of 0 
+            n_correct+=1
+        end
+    end
+    return n_correct/n_samples
 end

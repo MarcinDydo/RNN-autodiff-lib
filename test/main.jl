@@ -10,8 +10,8 @@ include("../src/autodifflib.jl")
 # Ładowanie danych MNIST
 train_data = MNIST(:train)
 test_data  = MNIST(:test)
-learning_rate = 15e-4
-epochs = 150
+learning_rate = 15e-3
+epochs = 5
 
 # Funkcja do ładowania danych
 function initRNN(learning_rate::Int, epochs::Int) #returns layers
@@ -48,19 +48,41 @@ function initRNN(learning_rate::Int, epochs::Int) #returns layers
     return input_layer, recusive_layer, output_layer
 end
 
+function RNNloader(batchsize::Int)
+    l = length(train_data.targets)  # Zakła
+    indices = shuffle(collect(1:l))  # Tasowanie indeksów
+    batches = floor(Int, l/batchsize)
+
+    batch_x = Vector{Array{Float32, 3}}()
+    batch_y = Vector{Vector{Int64}}()
+
+    # Ładowanie partii danych
+    for i in 1:batchsize:batches*batchsize
+        push!(batch_x, train_data.features[:, :, indices[i:i+batchsize-1]])
+        push!(batch_y, train_data.targets[indices[i:i+batchsize-1]])
+    end
+
+    return batch_x, batch_y, batches
+end
+
+
+
 function trainRNN(learning_rate::Float64, epochs::Int) 
     clamp = 5.0
-    batchsize = 1000
+    batchsize = 100
 
     model = Model(initRNN(1,1)...,learning_rate,x->x,cross_grad,clamp) #TODO implement loss
+    
     for i in 1:epochs
-        indices = shuffle(collect(1:batchsize))
-        batch_x =  myshuffle(indices,batchsize,train_data.features) 
-        batch_y =  [train_data.targets[j] for j in indices]
+        batch_x, batch_y , b = RNNloader(batchsize)
+
+        for i in 1:b
+            forward_pass(model, batch_x[i], batchsize) 
         
-        forward_pass(model, batch_x, batchsize) 
-        println(i, "th epoch, Accuracy: ", calculate_accuracy(model.out.outputs,batch_y))
-        backward_pass(model, one_hot.(batch_y), batchsize)
+            backward_pass(model, one_hot.(batch_y[i]), batchsize)
+            resetRNN(model)
+        end
+        testRNN(model,i)
         resetRNN(model)
     end
     return model
@@ -79,30 +101,7 @@ function resetRNN(model::Model)
     model.in.bias_grad = zeros(size(model.in.bias_grad))
 end
 
-function myshuffle(indices,batchsize, mat)
-    height = 28
-    width = 28
-    res = Array{Float32}(undef, height, width, batchsize)
-    n =1
-    for i in indices
-        res[:, :, n] = mat[:,:,i]
-        n +=1
-    end
-    return res
-end
-
-function calculate_accuracy(predictions, targets)
-    n_samples = length(targets)
-    n_correct = 0
-    for i in 1:n_samples
-        if argmax(predictions[i])[1]-1 == targets[i] #because of 0 
-            n_correct+=1
-        end
-    end
-    return n_correct/n_samples
-end
-
-function testRNN(model::Model)
+function testRNN(model::Model, i::Int)
 
     batchsize = length(test_data)
     resetRNN(model)
@@ -111,13 +110,12 @@ function testRNN(model::Model)
     test_y =  [test_data.targets[j] for j in indices]
     forward_pass(model, test_x, batchsize) 
 
-    println( "Test Accuracy: ", calculate_accuracy(model.out.outputs,test_y))
+    println(i, "th epoch test accuracy: ", calculate_accuracy(model.out.outputs,test_y))
 end
 
 @time begin
     m = trainRNN(learning_rate,epochs)
+    print()
 end
 
-for a in 1:10
-    testRNN(m)
-end
+

@@ -2,8 +2,8 @@ using LinearAlgebra
 using Random
 include("../src/graphutils.jl")
 # Przykładowa funkcja w bibliotece
-function one_hot(digit::Int64)
-    one_hot_vector = zeros(Int, 10) #TODO: change to num_of_classes
+function one_hot(digit::Int64, N)
+    one_hot_vector = zeros(Int, N)
     one_hot_vector[digit + 1] = 1
     return one_hot_vector
 end
@@ -31,23 +31,23 @@ function cross_grad(y_true, y_pred) #cross entropy loss with softmax
     return (y_pred - y_true) 
 end
 
-function relu(matrix::AbstractVector{T}, c = 5.0) where T<:Real
-    m = matrix # clamp.(matrix, -c, c)
+function relu(matrix::AbstractVector{T}, c) where T<:Real
+    m = clamp.(matrix, -c, c)
     return max.(m, 0.0)
 end
 
-function relu_derivative(matrix::AbstractVector{T}, c = 5.0) where T<:Real
-    m = matrix # clamp.(matrix, -c, c)
+function relu_derivative(matrix::AbstractVector{T}, c ) where T<:Real
+    m = clamp.(matrix, -c, c)
     map(x -> x > 0 ? 1 : 0, m)
 end
 
-function tanhip(matrix::AbstractVector{T}, c=5.0) where T<:Real
-    m = matrix # clamp.(matrix, -c, c)
+function tanhip(matrix::AbstractVector{T}, c) where T<:Real
+    m = clamp.(matrix, -c, c)
     return tanh.(m)
 end
 
-function tanhip_derivative(matrix::AbstractVector{T}, c=5.0) where T<:Real
-    m = matrix # clamp.(matrix, -c, c)
+function tanhip_derivative(matrix::AbstractVector{T}, c) where T<:Real
+    m = clamp.(matrix, -c, c)
     return Vector{Float32}(map(x -> 1 - tanh(x)^2, m))
 end
 

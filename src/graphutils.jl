@@ -1,3 +1,4 @@
+#DICLAIMER: this coputational graph approach only supports making recurisve neural networks
 using LinearAlgebra
 abstract type Layer end
 
@@ -10,6 +11,7 @@ mutable struct InputLayer <: Layer
     bias::Matrix{Float32} 
     bias_grad::Matrix{Float32}                          
     inputs::Vector{Vector{Float32}} #
+    c::Float32
 end
 
 mutable struct HiddenLayer <: Layer 
@@ -21,6 +23,7 @@ mutable struct HiddenLayer <: Layer
     bias::Matrix{Float32} 
     bias_grad::Matrix{Float32}
     hiddens::Vector{Vector{Float32}} 
+    c::Float32
 end
 
 mutable struct OutputLayer <: Layer
@@ -32,16 +35,14 @@ mutable struct OutputLayer <: Layer
     bias::Matrix{Float32} 
     bias_grad::Matrix{Float32}
     outputs::Vector{Vector{Float32}}
+    c::Float32
 end
 
 struct Model
-    in::InputLayer
-    hid::HiddenLayer
-    out::OutputLayer
+    layers::Vector{Layer} #layers are numbered from 1 (input) to n (output)
     learning_rate::Float32
     loss_function::Function
     loss_gradient::Function
-    c::Float32
 end
 
 #Forward  
@@ -56,9 +57,9 @@ function forward(layer::HiddenLayer, input::Vector{Float32}, prev_state::Union{V
     if isnothing(prev_state) 
         z = input
     else
-        z = vec(input + layer.weights * prev_state + layer.bias)
+        z = vec(input + layer.weights * prev_state + layer.bias) #recursive logic for hidden nodes
     end
-    layer.state = vec(layer.activation(z))
+    layer.state = vec(layer.activation(z,layer.c))
     push!(layer.hiddens, layer.state)
     return layer.state
 end
@@ -73,44 +74,43 @@ end
 function forward_pass(model::Model, features::Array{Float32,3}, batchsize::Int)
     for i in 1:batchsize
         input_value = vec(features[:,:,i])
-        forward(model.in , input_value) 
-        forward(model.hid , model.in.state, model.hid.state)
-        forward(model.out , model.hid.state)
+        for j in 1:length(model.layers)
+            if j == 1
+                forward(model.layers[j] , input_value) 
+                continue
+            elseif j == length(model.layers)
+                forward(model.layers[j] , model.layers[j-1].state)
+            else
+                forward(model.layers[j] , model.layers[j-1].state, model.layers[j].state)       
+            end
+        end
     end
 end
 
 #Backpropagarion
 
 function backward_pass(model::Model, actuals::Vector{Vector{Int}} , batchsize::Int)
-    lr = model.learning_rate
-    loss_grad = model.loss_gradient(actuals,model.out.outputs) #now we have all output gradients relative to actual classes
-    
+    n = length(model.layers)
+    loss_grad = model.loss_gradient(actuals,model.layers[n].outputs) #now we have all output gradients relative to actual classes
+
     next = nothing
 
     for i in reverse(1:batchsize)
         l_grad = loss_grad[i]
-        output_grad = backward(model.out,l_grad,model.hid.hiddens[i])
-        if i > 1
-            hidden_grad = backward(model.hid,output_grad,next,model.hid.hiddens[i],model.hid.hiddens[i-1])
-        else
-            hidden_grad = backward(model.hid,output_grad,next,model.hid.hiddens[i],zeros(Float32,size(model.hid.hiddens[i])))
-        end#końcowy case
-        backward(model.in,hidden_grad,model.in.inputs[i])
+        
+        running_grad = backward(model.layers[n],l_grad, model.layers[n-1].hiddens[i])
+        for j in reverse(2:n-1)
+            if i > 1
+                running_grad = backward(model.layers[j],running_grad,next,model.layers[j].hiddens[i],model.layers[j].hiddens[i-1])
+            else
+                running_grad = backward(model.layers[j],running_grad,next,model.layers[j].hiddens[i],zeros(Float32,size(model.layers[j].hiddens[i])))
+            end#końcowy case
+        end
+        backward(model.layers[1],running_grad, model.layers[1].inputs[i])
     end
-    #update wag
-    model.in.weights -= model.in.weights_grad * lr
-    replace!(model.in.weights , NaN=>0.0)
-    model.hid.weights -= model.hid.weights_grad * lr
-    replace!(model.hid.weights , NaN=>0.0)
-    model.out.weights -= model.out.weights_grad * lr
-    replace!(model.out.weights , NaN=>0.0)
 
-    model.hid.bias -= model.hid.bias_grad * lr
-    replace!(model.hid.bias , NaN=>0.0)
-    model.out.bias -= model.out.bias_grad * lr
-    replace!(model.out.bias , NaN=>0.0)
-    model.in.bias -= model.in.bias_grad * lr
-    replace!(model.out.bias , NaN=>0.0)
+    #update wag
+    update_parameters(model)
 
 end
 
@@ -129,7 +129,7 @@ function backward(layer::HiddenLayer, prev_grad::Vector{Float32}, next_grad::Uni
         grad = prev_grad + layer.weights' * next_grad
     end
     
-    grad = grad .* layer.derivative(hid_state)
+    grad = grad .* layer.derivative(hid_state,layer.c)
     # Calculate gradients for hidden layer
     layer.weights_grad += grad * next_state'
     layer.bias_grad .+= mean(grad)
@@ -141,4 +141,28 @@ function backward(layer::InputLayer, grad::Vector{Float32}, in_state::Vector{Flo
     layer.weights_grad += grad * in_state'
     layer.bias_grad .+= mean(grad)
     return
+end
+
+function update_parameters(model::Model)
+    lr = model.learning_rate
+    for j in 1:length(model.layers)
+        model.layers[j].weights -= model.layers[j].weights_grad * lr
+        replace!(model.layers[j].weights , NaN=>0.0)
+        model.layers[j].bias -= model.layers[j].bias_grad * lr
+        replace!(model.layers[j].bias , NaN=>0.0)
+    end
+end
+
+function reset_layers(model::Model)
+    for j in 1:length(model.layers)
+        if j == 1
+            empty!(model.layers[j].inputs)
+        elseif j == length(model.layers)
+            empty!(model.layers[j].outputs)
+        else
+            empty!(model.layers[j].hiddens)
+        end
+        model.layers[j].weights_grad = zeros(size(model.layers[j].weights_grad))
+        model.layers[j].bias_grad = zeros(size(model.layers[j].bias_grad))
+    end
 end
